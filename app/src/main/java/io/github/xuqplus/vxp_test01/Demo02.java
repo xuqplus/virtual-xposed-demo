@@ -7,8 +7,6 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Timer;
@@ -24,7 +22,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class Demo02 implements IXposedHookLoadPackage {
     @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
+    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException, InstantiationException {
         XposedBridge.log("handleLoadPackage executed..");
 
         logLoadPackageParam(loadPackageParam);
@@ -48,6 +46,7 @@ public class Demo02 implements IXposedHookLoadPackage {
 
         boolean isYiGeTestApp = isThatApp(loadPackageParam, "io.github.xuqplus.yigetestapp", "一个测试的app");
 
+/*
         if (isYiGeTestApp) {
             ClassLoader classLoader = (ClassLoader) loadPackageParam.getClass().getField("classLoader").get(loadPackageParam);
             Class clazz = XposedHelpers.findClass("io.github.xuqplus.yigetestapp.MainActivity", classLoader);
@@ -69,7 +68,7 @@ public class Demo02 implements IXposedHookLoadPackage {
                     XposedBridge.log(String.format("beforeHookedMethod param.method=%s", param.method));
                     XposedBridge.log(String.format("beforeHookedMethod param.getResult()=%s", param.getResult()));
 
-                    param.setResult("beforeHookedMethod 修改返回值");
+                    param.setResult("beforeHookedMethod 修改返回值"); // 生效, 最终要看afterHookedMethod是否setResult
                 }
 
                 @Override
@@ -87,6 +86,29 @@ public class Demo02 implements IXposedHookLoadPackage {
                     XposedBridge.log(String.format("afterHookedMethod param.getResult()=%s", param.getResult()));
 
 //                    param.setResult("afterHookedMethod 修改返回值"); // 生效
+                }
+            }});
+        }
+*/
+
+        if (isYiGeTestApp) {
+            ClassLoader classLoader = (ClassLoader) loadPackageParam.getClass().getField("classLoader").get(loadPackageParam);
+            final Class clazz = XposedHelpers.findClass("io.github.xuqplus.yigetestapp.MainActivity", classLoader);
+            XposedHelpers.findAndHookMethod(clazz, "onclick", new Object[]{String.class, new XC_MethodHook() {
+
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    super.beforeHookedMethod(param);
+
+                    if (null != param.args)
+                        param.args[0] = "哈哈， 修改了参数123"; // 修改输入参数
+
+//                    param.setThrowable(new RuntimeException("prevent method executed")); // 设置异常阻止方法执行
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    super.afterHookedMethod(param);
                 }
             }});
         }
