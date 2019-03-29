@@ -3,10 +3,8 @@ package io.github.xuqplus.vxp_test01;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
-import android.util.Log;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
@@ -14,9 +12,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -49,13 +44,13 @@ public class Demo03 implements IXposedHookLoadPackage {
                     XposedBridge.log(String.format("#### attach afterHookedMethod param.args=%s", param.args));
                     XposedBridge.log(String.format("#### attach afterHookedMethod Arrays.toString(param.args)=%s", Arrays.toString(param.args)));
 //                    securityCheckHook(classLoader);
-//                    hookRpc(classLoader);
+                    hookRpc(classLoader);
                     try {
                         XposedBridge.log("#### 1");
                         Class classChatMessageProcesser = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.processer.ChatMessageProcesser");
                         Class classMessageFactory = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.sender.MessageFactory");
-                        XposedBridge.log(String.format("afterHookedMethod #### classChatMessageProcesser=%s", classChatMessageProcesser.getName()));
-                        XposedBridge.log(String.format("afterHookedMethod #### classChatMessageProcesser=%s", classMessageFactory.getName()));
+                        XposedBridge.log(String.format("#### attach afterHookedMethod classChatMessageProcesser=%s", classChatMessageProcesser.getName()));
+                        XposedBridge.log(String.format("#### attach afterHookedMethod classMessageFactory=%s", classMessageFactory.getName()));
                         XposedBridge.log("#### 2");
                         /* MessageFactory.createTextMsg */
                         XposedHelpers.findAndHookMethod(classMessageFactory, "createTextMsg", new Object[]{String.class, String.class, String.class, String.class, String.class, Boolean.TYPE, new XC_MethodHook() {
@@ -87,7 +82,19 @@ public class Demo03 implements IXposedHookLoadPackage {
                                 XposedBridge.log(String.format("#### processMessages beforeHookedMethod param1=%s", Arrays.toString(param1.args)));
 
                                 /* 处理消息 */
-                                handleMessage(param1.args);
+                                Map<String, String> msg = handleMessage(param1.args);
+
+                                /* 是新的好友吗 */
+                                boolean isNewFriend = isNewFriend(msg);
+
+                                /* 发起收款 */
+                                if (isNewFriend) {
+                                    boolean isCollected = collectMoney(classLoader, msg.get("fromUId"), "1.24", "哈哈, 付早上的饭钱1.24");
+                                    /* 删除好友 */
+                                    if (isCollected) {
+                                        deleteContact(classLoader, msg.get("fromUId"));
+                                    }
+                                }
                             }
 
                             @Override
@@ -106,7 +113,17 @@ public class Demo03 implements IXposedHookLoadPackage {
         }
     }
 
-    private void handleMessage(Object[] args) {
+    /**
+     * 是新添加好友的通知消息吗?
+     */
+    private boolean isNewFriend(Map<String, String> msg) {
+        if (null != msg && "8003".equals(msg.get("templateCode")) && msg.get("templateData").contains("现在可以开始聊天了。")) {
+            return true;
+        }
+        return false;
+    }
+
+    private Map handleMessage(Object[] args) {
         if (null != args) {
             // [incrementalId=1553835554173fromUId=2088702132008225fromLoginId=xuq***@live.cntoUId=2088012758570434toLoginId=nullmsgId=190329125950220675clientMsgId=MRELATION-FRIEND_208870213200822520880127585704341553835590260templateCode=8003templateData={"icon":"","m":"你已经添加了QQ，现在可以开始聊天了。","voiceOverText":""}hintMemo=nullbizMemo=nullbizType=MR-F-ACCegg=MR-F-ACClink=nullcreateTimeMills=1553835590261createTime=nullrecent=nullread=nullaction=4bizRemind=nullmsgIndex=8232f73f6ba7f3b24a6500ec47658165_190329125950220675msgOptType=null]
             Map<String, String> msg = parseMessage(((List) args[0]).get(0).toString());
@@ -116,7 +133,9 @@ public class Demo03 implements IXposedHookLoadPackage {
             XposedBridge.log(String.format("#### parseMessage toLoginId=%s", msg.get("toLoginId")));
             XposedBridge.log(String.format("#### parseMessage templateCode=%s", msg.get("templateCode")));
             XposedBridge.log(String.format("#### parseMessage templateData=%s", msg.get("templateData")));
+            return msg;
         }
+        return null;
     }
 
     /**
@@ -174,42 +193,11 @@ public class Demo03 implements IXposedHookLoadPackage {
         }
     }
 
-    private Object collectRpcFac = null;
-    private Object contactDao;
-    private boolean isDrawRedPackage = false;
-    private Map<String, String> orderRecord = new ConcurrentHashMap();
-    private Object relationRpcFac;
-    private Map<String, String> shoukuanlist = new ConcurrentHashMap();
-
-    private void collectList(final ClassLoader paramClassLoader) {
-        this.isDrawRedPackage = true;
-        TimerTask timerTask = new TimerTask() {
-            public void run() {
-                Iterator<String> it = shoukuanlist.values().iterator();
-                while (it.hasNext()) {
-                    String next = it.next();
-                    try {
-                        Thread.sleep(1000L);
-                    } catch (Exception localException) {
-                    }
-                    if (next != null) {
-                        JSONObject localObject4 = JSONObject.parseObject(next);
-                        String userid = localObject4.getString("userid");
-                        String amount = localObject4.getString("amount");
-                        String order = localObject4.getString("order");
-//                        collectMoney(paramClassLoader, userid, amount, order);
-                        shoukuanlist.remove(localObject4);
-                    }
-                }
-            }
-        };
-        new Timer().schedule(timerTask, 1L, 2000L);
-    }
-
     /**
      * 发起主动收款
      */
-    private void collectMoney(ClassLoader classLoader, String userId, String payAmount, String desc) {
+    private boolean collectMoney(ClassLoader classLoader, String userId, String payAmount, String desc) {
+        XposedBridge.log(String.format("#### collectMoney, userId=%s, payAmount=%s, desc=%s", userId, payAmount, desc));
         Object o = XposedHelpers.newInstance(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.rpc.req.SingleCreateReq", classLoader));
         XposedHelpers.setObjectField(o, "userId", userId);
         XposedHelpers.setObjectField(o, "logonId", "");
@@ -218,20 +206,37 @@ public class Demo03 implements IXposedHookLoadPackage {
         XposedHelpers.setObjectField(o, "billName", "个人收款");
         XposedHelpers.setObjectField(o, "source", "chat");
         XposedHelpers.setObjectField(o, "desc", desc);
-        Object o1 = XposedHelpers.callMethod(this.collectRpcFac, "createBill", o);
-        Log.i("xposed", JSON.toJSONString(o1));
+        XposedBridge.log(String.format("#### collectMoney, JSON.toJSONString(o)=%s", JSON.toJSONString(o)));
+        Object r = XposedHelpers.callMethod(this.socialPersonalActivity, "createBill", new Object[]{o});
+        XposedBridge.log(String.format("#### collectMoney, JSON.toJSONString(r)=%s", JSON.toJSONString(r)));
+        return false;
     }
 
     /**
      * 删除好友
      */
-    private void delectContact(ClassLoader classLoader, String userId) {
-        Object o = XposedHelpers.callMethod(this.contactDao, "getAccountById", userId);
-        Object o1 = XposedHelpers.newInstance(XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.req.HandleRelationReq", classLoader));
-        XposedHelpers.setObjectField(o1, "targetUserId", userId);
-        XposedHelpers.setObjectField(o1, "alipayAccount", o);
-        XposedHelpers.setObjectField(o1, "bizType", "2");
-        XposedHelpers.callMethod(XposedHelpers.callMethod(this.relationRpcFac, "getRpcProxy", XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService", classLoader)), "handleRelation", o1);
+    private boolean deleteContact(ClassLoader classLoader, String userId) {
+        XposedBridge.log(String.format("#### deleteContact, userId=%s", userId));
+        Object alipayAccount = XposedHelpers.callMethod(this.aliAccountDaoOp, "getAccountById", userId);
+        XposedBridge.log(String.format("#### deleteContact, alipayAccount=%s", alipayAccount));
+        // JSON.toJSONString(alipayAccount)=
+        // {"account":"340824a05nw.cdb@sina.cn","accountType":"2","active":true,"alipayAccount":true,"area":"青浦区","blacked":false,"displayName":"xuqplus",
+        // "displayNickName":"xuqplus","exposedAlipayAccount":"340824a05nw.cdb@sina.cn","
+        // extSocialInfo":"{\"age\":\"25\",\"bgImgUrl\":\"\",\"constellation\":\"TX\",\"displayArea\":\"上海 青浦区\",\"height\":\"\",\"income\":\"\",\"interest\":\"\",\"profession\":\"\",\"weight\":\"\"}",
+        // "extVersion":1534386419799,"firstAlphaChar":"X","friendStatus":1,"gender":"m","groupMemberCount":0,"headImageUrl":"http://tfs.alipayobjects.com/images/partner/T1zRNCXdtcXXXXXXXX_160X160",
+        // "hideFriendMoments":"N","hideRealName":false,"isDelete":false,"isFrom":"account","isTop":false,"loginId":"340824a05nw.cdb@sina.cn","matchedPinyinStr":"XUQPLUS",
+        // "mobileMatched":0,"myFriend":true,"name":"许群群","nameExceptGroupNick":"xuqplus","nickName":"xuqplus","notDisturb":false,"notShareMyMoments":"N",
+        // "phoneNumber":"","province":"上海","realNameStatus":"Y","realNameVisable":true,"showAsEnterprise":"N","source":"通过好友验证添加","sourceDec":"by_f_v","starFriend":false,
+        // "userGrade":"大众会员","userId":"2088012758570434","userType":"1","version":0,"zmCreditText":"","zmCreditUrl":""}
+        XposedBridge.log(String.format("#### deleteContact, JSON.toJSONString(alipayAccount)=%s", JSON.toJSONString(alipayAccount)));
+        Object o = XposedHelpers.newInstance(XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.req.HandleRelationReq", classLoader));
+        XposedHelpers.setObjectField(o, "targetUserId", userId);
+        XposedHelpers.setObjectField(o, "alipayAccount", XposedHelpers.getObjectField(alipayAccount, "account"));
+        XposedHelpers.setObjectField(o, "bizType", "2");
+        Object r = XposedHelpers.callMethod(XposedHelpers.callMethod(this.rpcFactory, "getRpcProxy", XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService", classLoader)), "handleRelation", o);
+        // {"resultCode":100,"success":true,"toastType":1}
+        XposedBridge.log(String.format("#### deleteContact, JSON.toJSONString(r)=%s", JSON.toJSONString(r)));
+        return XposedHelpers.getBooleanField(r, "success");
     }
 
     /**
@@ -289,30 +294,56 @@ public class Demo03 implements IXposedHookLoadPackage {
     /**
      * 什么rpc
      */
+    private Object socialPersonalActivity = null;
+    private Object aliAccountDaoOp = null;
+    private Object rpcFactory = null;
+
     public void hookRpc(ClassLoader classLoader) {
-        XposedHelpers.findAndHookConstructor("com.alipay.mobile.socialcommonsdk.bizdata.contact.data.AliAccountDaoOp", classLoader, new Object[]{String.class, new XC_MethodHook() {
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                XposedBridge.log("sssss==" + param);
-            }
-        }});
-//        XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.mobile.common.rpc.RpcFactory", paramClassLoader), "getRpcProxy", new Object[]{Class.class, new XC_MethodHook() {
-//            protected void afterHookedMethod(XC_MethodHook.MethodHookParam paramAnonymousMethodHookParam)
-//                    throws Throwable {
-//                if (XposedHelpers.callMethod(paramAnonymousMethodHookParam.args[0], "getName", new Object[0]).equals("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
-//                    Main.access$902(Main.this, paramAnonymousMethodHookParam.thisObject);
-//                }
-//            }
-//        }});
-//        XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.ui.SocialPersonalActivity", paramClassLoader), "a", new Object[]{new XC_MethodHook() {
-//            protected void afterHookedMethod(XC_MethodHook.MethodHookParam paramAnonymousMethodHookParam)
-//                    throws Throwable {
-//                StringBuilder localStringBuilder = new StringBuilder();
-//                localStringBuilder.append("dangqianobj======");
-//                localStringBuilder.append(paramAnonymousMethodHookParam.thisObject);
-//                XposedBridge.log(localStringBuilder.toString());
-//                Main.access$302(Main.this, XposedHelpers.getObjectField(paramAnonymousMethodHookParam.thisObject, "g"));
-//            }
-//        }});
+//        if (null == aliAccountDaoOp) {
+        try {
+            XposedHelpers.findAndHookConstructor("com.alipay.mobile.socialcommonsdk.bizdata.contact.data.AliAccountDaoOp", classLoader, new Object[]{String.class, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+                    aliAccountDaoOp = param.thisObject;
+                    XposedBridge.log(String.format("#### hookRpc aliAccountDaoOp set.."));
+                }
+            }});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+//        if (null == rpcFactory) {
+        try {
+            XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.mobile.common.rpc.RpcFactory", classLoader), "getRpcProxy", new Object[]{Class.class, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+//                    if (null != param && null != param.args && param.args[0].toString().contains("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
+//                        rpcFactory = param.thisObject;
+//                        XposedBridge.log(String.format("#### hookRpc rpcFactory set.."));
+//                    }
+                    Object z = XposedHelpers.callMethod(param.args[0], "getName", new Object[0]);
+                    XposedBridge.log(String.format("#### hookRpc getName z=%s", z));
+                    XposedBridge.log(String.format("#### hookRpc getName z=%s", JSON.toJSONString(z)));
+                    if (z.toString().equals("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
+                        rpcFactory = param.thisObject;
+                        XposedBridge.log(String.format("#### hookRpc rpcFactory set.."));
+                    }
+                }
+            }});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+//        if (null == socialPersonalActivity) {
+        try {
+            XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.ui.SocialPersonalActivity", classLoader), "a", new Object[]{new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+                    socialPersonalActivity = XposedHelpers.getObjectField(param.thisObject, "g");
+                    XposedBridge.log(String.format("#### hookRpc socialPersonalActivity set.."));
+                }
+            }});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /**
