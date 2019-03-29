@@ -10,6 +10,7 @@ import com.alibaba.fastjson.JSONObject;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +85,9 @@ public class Demo03 implements IXposedHookLoadPackage {
                                 XposedBridge.log(String.format("#### processMessages beforeHookedMethod param1=%s", param1));
                                 XposedBridge.log(String.format("#### processMessages beforeHookedMethod param1=%s", param1.args));
                                 XposedBridge.log(String.format("#### processMessages beforeHookedMethod param1=%s", Arrays.toString(param1.args)));
+
+                                /* 处理消息 */
+                                handleMessage(param1.args);
                             }
 
                             @Override
@@ -99,6 +103,19 @@ public class Demo03 implements IXposedHookLoadPackage {
                     }
                 }
             }});
+        }
+    }
+
+    private void handleMessage(Object[] args) {
+        if (null != args) {
+            // [incrementalId=1553835554173fromUId=2088702132008225fromLoginId=xuq***@live.cntoUId=2088012758570434toLoginId=nullmsgId=190329125950220675clientMsgId=MRELATION-FRIEND_208870213200822520880127585704341553835590260templateCode=8003templateData={"icon":"","m":"你已经添加了QQ，现在可以开始聊天了。","voiceOverText":""}hintMemo=nullbizMemo=nullbizType=MR-F-ACCegg=MR-F-ACClink=nullcreateTimeMills=1553835590261createTime=nullrecent=nullread=nullaction=4bizRemind=nullmsgIndex=8232f73f6ba7f3b24a6500ec47658165_190329125950220675msgOptType=null]
+            Map<String, String> msg = parseMessage(((List) args[0]).get(0).toString());
+            XposedBridge.log(String.format("#### parseMessage fromUId=%s", msg.get("fromUId")));
+            XposedBridge.log(String.format("#### parseMessage fromLoginId=%s", msg.get("fromLoginId")));
+            XposedBridge.log(String.format("#### parseMessage toUId=%s", msg.get("toUId")));
+            XposedBridge.log(String.format("#### parseMessage toLoginId=%s", msg.get("toLoginId")));
+            XposedBridge.log(String.format("#### parseMessage templateCode=%s", msg.get("templateCode")));
+            XposedBridge.log(String.format("#### parseMessage templateData=%s", msg.get("templateData")));
         }
     }
 
@@ -296,5 +313,55 @@ public class Demo03 implements IXposedHookLoadPackage {
 //                Main.access$302(Main.this, XposedHelpers.getObjectField(paramAnonymousMethodHookParam.thisObject, "g"));
 //            }
 //        }});
+    }
+
+    /**
+     * 解析加好友的消息
+     */
+    private Map parseMessage(String msg) {
+        String[] as = msg.split("=");
+        final Map<String, Object> map = new HashMap() {{
+            put("incrementalId", null);
+            put("fromUId", null);
+            put("fromLoginId", null);
+            put("toUId", null);
+            put("toLoginId", null);
+            put("msgId", null);
+            put("clientMsgId", null);
+            put("templateCode", null);
+            put("templateData", null);
+            put("hintMemo", null);
+            put("bizMemo", null);
+            put("bizType", null);
+            put("egg", null);
+            put("link", null);
+            put("createTimeMills", null);
+            put("createTime", null);
+            put("recent", null);
+            put("read", null);
+            put("action", null);
+            put("bizRemind", null);
+            put("msgIndex", null);
+            put("msgOptType", null);
+        }};
+        for (int i = 0; i < as.length; i++) {
+            String s = as[i];
+            for (int j = s.length(); j > 0; j--) {
+                String key = s.substring(j, s.length());
+                if (map.containsKey(key)) {
+                    as[i] = s.substring(0, j);
+                    map.put(key, i);
+                    break;
+                }
+            }
+        }
+        Iterator it = map.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, Object> kv = (Map.Entry) it.next();
+            Object v = kv.getValue();
+            if (null == v || "null".equals(v)) v = 0;
+            map.put(kv.getKey(), as[(Integer) v + 1]);
+        }
+        return map;
     }
 }
