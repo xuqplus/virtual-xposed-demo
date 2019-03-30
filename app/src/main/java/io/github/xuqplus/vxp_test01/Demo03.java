@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -21,6 +22,9 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class Demo03 implements IXposedHookLoadPackage {
+
+    private Map<String, Object> msgs = new HashMap<>();
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException, InstantiationException {
         XposedBridge.log("handleLoadPackage executed..");
@@ -35,16 +39,17 @@ public class Demo03 implements IXposedHookLoadPackage {
             final ClassLoader classLoader = (ClassLoader) loadPackageParam.getClass().getField("classLoader").get(loadPackageParam);
 
             XposedHelpers.findAndHookMethod(Application.class, "attach", new Object[]{Context.class, new XC_MethodHook() {
+                @Override
                 protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
-                    XposedBridge.log("#### attach afterHookedMethod ####");
+                    XposedBridge.log("#### attach afterHookedMethod");
                     ClassLoader args0 = ((Context) param.args[0]).getClassLoader();
                     XposedBridge.log(String.format("#### attach afterHookedMethod args0=%s", args0));
                     XposedBridge.log(String.format("#### attach afterHookedMethod args0.getClass()=%s", args0.getClass()));
                     XposedBridge.log(String.format("#### attach afterHookedMethod args0.getClass().getName()=%s", args0.getClass().getName()));
                     XposedBridge.log(String.format("#### attach afterHookedMethod param.args=%s", param.args));
                     XposedBridge.log(String.format("#### attach afterHookedMethod Arrays.toString(param.args)=%s", Arrays.toString(param.args)));
-//                    securityCheckHook(classLoader);
-                    hookRpc(classLoader);
+//                    securityCheckHook(args0);
+                    hookRpc(args0);
                     try {
                         XposedBridge.log("#### 1");
                         Class classChatMessageProcesser = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.processer.ChatMessageProcesser");
@@ -84,15 +89,26 @@ public class Demo03 implements IXposedHookLoadPackage {
                                 /* 处理消息 */
                                 Map<String, String> msg = handleMessage(param1.args);
 
+                                String msgId = msg.get("incrementalId");
+                                if (null != msgs.get(msgId)) {
+                                    XposedBridge.log(String.format("#### 该消息已经处理, msgId=%s", msgId));
+                                    return;
+                                } else {
+                                    msgs.put(msgId, true);
+                                }
+
                                 /* 是新的好友吗 */
                                 boolean isNewFriend = isNewFriend(msg);
 
                                 /* 发起收款 */
                                 if (isNewFriend) {
-                                    boolean isCollected = collectMoney(classLoader, msg.get("fromUId"), "1.24", "哈哈, 付早上的饭钱1.24");
+                                    String payAmount = new Random().nextInt(10) + 1 + ".05";
+                                    String desc = String.format("哈哈, 早上的饭钱%s元, %s", payAmount, System.currentTimeMillis());
+                                    boolean isCollected = collectMoney(classLoader, msg.get("fromUId"), payAmount, desc);
                                     /* 删除好友 */
                                     if (isCollected) {
-                                        deleteContact(classLoader, msg.get("fromUId"));
+                                        boolean isDeleted = deleteContact(classLoader, msg.get("fromUId"));
+                                        // todo, 未完成的任务列表
                                     }
                                 }
                             }
@@ -118,6 +134,8 @@ public class Demo03 implements IXposedHookLoadPackage {
      */
     private boolean isNewFriend(Map<String, String> msg) {
         if (null != msg && "8003".equals(msg.get("templateCode")) && msg.get("templateData").contains("现在可以开始聊天了。")) {
+            XposedBridge.log(String.format("#### isNewFriend fromUId=%s, fromLoginId=%s, toUId=%s, toLoginId=%s, templateCode=%s, templateData=%s",
+                    msg.get("fromUId"), msg.get("fromLoginId"), msg.get("toUId"), msg.get("toLoginId"), msg.get("templateCode"), msg.get("templateData")));
             return true;
         }
         return false;
@@ -127,12 +145,6 @@ public class Demo03 implements IXposedHookLoadPackage {
         if (null != args) {
             // [incrementalId=1553835554173fromUId=2088702132008225fromLoginId=xuq***@live.cntoUId=2088012758570434toLoginId=nullmsgId=190329125950220675clientMsgId=MRELATION-FRIEND_208870213200822520880127585704341553835590260templateCode=8003templateData={"icon":"","m":"你已经添加了QQ，现在可以开始聊天了。","voiceOverText":""}hintMemo=nullbizMemo=nullbizType=MR-F-ACCegg=MR-F-ACClink=nullcreateTimeMills=1553835590261createTime=nullrecent=nullread=nullaction=4bizRemind=nullmsgIndex=8232f73f6ba7f3b24a6500ec47658165_190329125950220675msgOptType=null]
             Map<String, String> msg = parseMessage(((List) args[0]).get(0).toString());
-            XposedBridge.log(String.format("#### parseMessage fromUId=%s", msg.get("fromUId")));
-            XposedBridge.log(String.format("#### parseMessage fromLoginId=%s", msg.get("fromLoginId")));
-            XposedBridge.log(String.format("#### parseMessage toUId=%s", msg.get("toUId")));
-            XposedBridge.log(String.format("#### parseMessage toLoginId=%s", msg.get("toLoginId")));
-            XposedBridge.log(String.format("#### parseMessage templateCode=%s", msg.get("templateCode")));
-            XposedBridge.log(String.format("#### parseMessage templateData=%s", msg.get("templateData")));
             return msg;
         }
         return null;
@@ -206,10 +218,12 @@ public class Demo03 implements IXposedHookLoadPackage {
         XposedHelpers.setObjectField(o, "billName", "个人收款");
         XposedHelpers.setObjectField(o, "source", "chat");
         XposedHelpers.setObjectField(o, "desc", desc);
-        XposedBridge.log(String.format("#### collectMoney, JSON.toJSONString(o)=%s", JSON.toJSONString(o)));
-        Object r = XposedHelpers.callMethod(this.socialPersonalActivity, "createBill", new Object[]{o});
-        XposedBridge.log(String.format("#### collectMoney, JSON.toJSONString(r)=%s", JSON.toJSONString(r)));
-        return false;
+        // o={"billName":"个人收款","desc":"哈哈, 付早上的饭钱1.24","logonId":"","payAmount":"1.24","source":"chat","userId":"2088702132008225","userName":""}
+        XposedBridge.log(String.format("#### collectMoney, o=%s", JSON.toJSONString(o)));
+        Object r = XposedHelpers.callMethod(this.collectRpcFac, "createBill", new Object[]{o});
+        // r={"success":true,"transferNo":"20190330200040011100220022837971"}
+        XposedBridge.log(String.format("#### collectMoney, r=%s", JSON.toJSONString(r)));
+        return XposedHelpers.getBooleanField(r, "success");
     }
 
     /**
@@ -233,7 +247,7 @@ public class Demo03 implements IXposedHookLoadPackage {
         XposedHelpers.setObjectField(o, "targetUserId", userId);
         XposedHelpers.setObjectField(o, "alipayAccount", XposedHelpers.getObjectField(alipayAccount, "account"));
         XposedHelpers.setObjectField(o, "bizType", "2");
-        Object r = XposedHelpers.callMethod(XposedHelpers.callMethod(this.rpcFactory, "getRpcProxy", XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService", classLoader)), "handleRelation", o);
+        Object r = XposedHelpers.callMethod(XposedHelpers.callMethod(this.relationRpcFac, "getRpcProxy", XposedHelpers.findClass("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService", classLoader)), "handleRelation", o);
         // {"resultCode":100,"success":true,"toastType":1}
         XposedBridge.log(String.format("#### deleteContact, JSON.toJSONString(r)=%s", JSON.toJSONString(r)));
         return XposedHelpers.getBooleanField(r, "success");
@@ -294,51 +308,33 @@ public class Demo03 implements IXposedHookLoadPackage {
     /**
      * 什么rpc
      */
-    private Object socialPersonalActivity = null;
     private Object aliAccountDaoOp = null;
-    private Object rpcFactory = null;
+    private Object collectRpcFac = null;
+    private Object relationRpcFac = null;
 
     public void hookRpc(ClassLoader classLoader) {
-//        if (null == aliAccountDaoOp) {
         try {
             XposedHelpers.findAndHookConstructor("com.alipay.mobile.socialcommonsdk.bizdata.contact.data.AliAccountDaoOp", classLoader, new Object[]{String.class, new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+                protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
                     aliAccountDaoOp = param.thisObject;
-                    XposedBridge.log(String.format("#### hookRpc aliAccountDaoOp set.."));
+                    XposedBridge.log(String.format("#### hookRpc aliAccountDaoOp set to=%s", aliAccountDaoOp));
                 }
             }});
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-//        if (null == rpcFactory) {
-        try {
             XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.mobile.common.rpc.RpcFactory", classLoader), "getRpcProxy", new Object[]{Class.class, new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
-//                    if (null != param && null != param.args && param.args[0].toString().contains("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
-//                        rpcFactory = param.thisObject;
-//                        XposedBridge.log(String.format("#### hookRpc rpcFactory set.."));
-//                    }
-                    Object z = XposedHelpers.callMethod(param.args[0], "getName", new Object[0]);
-                    XposedBridge.log(String.format("#### hookRpc getName z=%s", z));
-                    XposedBridge.log(String.format("#### hookRpc getName z=%s", JSON.toJSONString(z)));
-                    if (z.toString().equals("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
-                        rpcFactory = param.thisObject;
-                        XposedBridge.log(String.format("#### hookRpc rpcFactory set.."));
+                protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
+                    if (null != param && null != param.args && param.args[0].toString().contains("com.alipay.mobilerelation.biz.shared.rpc.AlipayRelationManageService")) {
+                        relationRpcFac = param.thisObject;
+                        XposedBridge.log(String.format("#### hookRpc relationRpcFac set to=%s", relationRpcFac));
                     }
                 }
             }});
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-//        if (null == socialPersonalActivity) {
-        try {
             XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.ui.SocialPersonalActivity", classLoader), "a", new Object[]{new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
-                    socialPersonalActivity = XposedHelpers.getObjectField(param.thisObject, "g");
-                    XposedBridge.log(String.format("#### hookRpc socialPersonalActivity set.."));
+                protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
+                    collectRpcFac = XposedHelpers.getObjectField(param.thisObject, "g");
+                    XposedBridge.log(String.format("#### hookRpc collectRpcFac set to=%s", collectRpcFac.getClass()));
                 }
             }});
         } catch (Exception e) {
@@ -350,6 +346,7 @@ public class Demo03 implements IXposedHookLoadPackage {
      * 解析加好友的消息
      */
     private Map parseMessage(String msg) {
+        XposedBridge.log(String.format("#### parseMessage msg=%s", msg));
         String[] as = msg.split("=");
         final Map<String, Object> map = new HashMap() {{
             put("incrementalId", null);
