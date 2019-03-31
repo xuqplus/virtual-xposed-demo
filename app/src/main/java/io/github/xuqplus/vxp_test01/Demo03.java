@@ -97,16 +97,23 @@ public class Demo03 implements IXposedHookLoadPackage {
                                     msgs.put(msgId, true);
                                 }
 
-                                /* 是新的好友吗 */
-                                boolean isNewFriend = isNewFriend(msg);
+                                /* 是普通消息吗 */
+                                if (isNormalMsg(msg)) {
+                                    Object m = ((Map) JSON.parse(msg.get("templateData"))).get("m");
 
-                                /* 发起收款 */
-                                if (isNewFriend) {
+                                    /* 删除好友指令 */
+                                    if ("#delete#".equals(m)) {
+                                        deleteContact(classLoader, msg.get("fromUId"));
+                                    }
+                                }
+
+                                /* 是新的好友通知吗 */
+                                if (isNewFriend(msg)) {
                                     String payAmount = new Random().nextInt(10) + 1 + ".05";
                                     String desc = String.format("哈哈, 早上的饭钱%s元, %s", payAmount, System.currentTimeMillis());
-                                    boolean isCollected = collectMoney(classLoader, msg.get("fromUId"), payAmount, desc);
-                                    /* 删除好友 */
-                                    if (isCollected) {
+                                    /* 发起收款 */
+                                    if (collectMoney(classLoader, msg.get("fromUId"), payAmount, desc)) {
+                                        /* 删除好友 */
                                         boolean isDeleted = deleteContact(classLoader, msg.get("fromUId"));
                                         // todo, 未完成的任务列表
                                     }
@@ -127,6 +134,18 @@ public class Demo03 implements IXposedHookLoadPackage {
                 }
             }});
         }
+    }
+
+    /**
+     * 检测普通聊天消息
+     */
+    private boolean isNormalMsg(Map<String, String> msg) {
+        if (null != msg && "11".equals(msg.get("templateCode"))) {
+            XposedBridge.log(String.format("#### isNormalMsg fromUId=%s, fromLoginId=%s, toUId=%s, toLoginId=%s, templateCode=%s, templateData=%s",
+                    msg.get("fromUId"), msg.get("fromLoginId"), msg.get("toUId"), msg.get("toLoginId"), msg.get("templateCode"), msg.get("templateData")));
+            return true;
+        }
+        return false;
     }
 
     /**
