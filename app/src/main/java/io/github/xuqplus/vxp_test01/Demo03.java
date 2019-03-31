@@ -5,6 +5,8 @@ import android.app.Application;
 import android.content.Context;
 
 import com.alibaba.fastjson.JSON;
+import com.loopj.android.http.AsyncHttpResponseHandler;
+import com.loopj.android.http.SyncHttpClient;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
@@ -12,8 +14,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
+import cz.msebera.android.httpclient.Header;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
@@ -52,7 +54,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                     hookRpc(args0);
                     try {
                         XposedBridge.log("#### 1");
-                        Class classChatMessageProcesser = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.processer.ChatMessageProcesser");
+                        final Class classChatMessageProcesser = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.processer.ChatMessageProcesser");
                         Class classMessageFactory = args0.loadClass("com.alipay.mobile.socialchatsdk.chat.sender.MessageFactory");
                         XposedBridge.log(String.format("#### attach afterHookedMethod classChatMessageProcesser=%s", classChatMessageProcesser.getName()));
                         XposedBridge.log(String.format("#### attach afterHookedMethod classMessageFactory=%s", classMessageFactory.getName()));
@@ -97,10 +99,34 @@ public class Demo03 implements IXposedHookLoadPackage {
                                     msgs.put(msgId, true);
                                 }
 
+                                /* 是向你付款消息吗 */
+                                if (isPayedToMsg(msg)) {
+                                    final String aliTradeNo = msg.get("tradeNO");
+                                    final String fromUId = msg.get("fromUId");
+                                    final String toUId = msg.get("toUId");
+                                    final String bizMemo = msg.get("bizMemo");
+                                    XposedBridge.log(String.format("#### isPayedToMsg aliTradeNo=%s, fromUId=%s, toUId=%s, toUId=%s,", aliTradeNo, fromUId, toUId, bizMemo));
+
+                                    final SyncHttpClient client = new SyncHttpClient();
+                                    final String url = String.format("http://192.168.1.5:8090/notify?aliTradeNo=%s", aliTradeNo);
+                                    client.get(url, new AsyncHttpResponseHandler() {
+                                        @Override
+                                        public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
+                                            String response = new String(responseBody);
+                                            XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url, response));
+                                        }
+
+                                        @Override
+                                        public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+                                            String response = new String(responseBody);
+                                            XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url, response));
+                                        }
+                                    });
+                                }
+
                                 /* 是普通消息吗 */
                                 if (isNormalMsg(msg)) {
                                     Object m = ((Map) JSON.parse(msg.get("templateData"))).get("m");
-
                                     /* 删除好友指令 */
                                     if ("#delete#".equals(m)) {
                                         deleteContact(classLoader, msg.get("fromUId"));
@@ -109,14 +135,51 @@ public class Demo03 implements IXposedHookLoadPackage {
 
                                 /* 是新的好友通知吗 */
                                 if (isNewFriend(msg)) {
-                                    String payAmount = new Random().nextInt(10) + 1 + ".05";
-                                    String desc = String.format("哈哈, 早上的饭钱%s元, %s", payAmount, System.currentTimeMillis());
-                                    /* 发起收款 */
-                                    if (collectMoney(classLoader, msg.get("fromUId"), payAmount, desc)) {
-                                        /* 删除好友 */
-                                        boolean isDeleted = deleteContact(classLoader, msg.get("fromUId"));
-                                        // todo, 未完成的任务列表
-                                    }
+                                    final String userId = msg.get("fromUId");
+
+                                    final SyncHttpClient client = new SyncHttpClient();
+                                    final String url = String.format("http://192.168.1.5:8090/userId?userId=%s", userId);
+                                    client.get(url, new AsyncHttpResponseHandler() {
+                                        @Override
+                                        public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
+                                            String response = new String(responseBody);
+                                            XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url, response));
+                                            Map r = (Map) JSON.parse(response);
+                                            if ("0".equals(r.get("code")) && "ok".equals(r.get("msg"))) {
+                                                Map data = (Map) r.get("data");
+                                                final String no = (String) data.get("no");
+                                                final String amount = (String) data.get("amount");
+                                                final String desc = (String) data.get("desc");
+                                                /* 发起收款 */
+                                                // r={"success":true,"transferNo":"20190330200040011100220022837971"}
+                                                Object collectMoney = collectMoney(classLoader, userId, amount, desc);
+                                                if (XposedHelpers.getBooleanField(collectMoney, "success")) {
+                                                    final Object transferNo = XposedHelpers.getObjectField(collectMoney, "transferNo");
+                                                    final SyncHttpClient client1 = new SyncHttpClient();
+                                                    final String url1 = String.format("http://192.168.1.5:8090/update?no=%s&aliTradeNo=%s", no, transferNo);
+                                                    client1.get(url1, new AsyncHttpResponseHandler() {
+                                                        @Override
+                                                        public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
+                                                            XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url1, new String(responseBody)));
+                                                        }
+
+                                                        @Override
+                                                        public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+                                                            XposedBridge.log(String.format("#### %s, onFailure responseBody=%s", url1, new String(responseBody)));
+                                                        }
+                                                    });
+                                                    /* 删除好友 */
+                                                    boolean isDeleted = deleteContact(classLoader, userId);
+                                                    // todo, 未完成的任务列表
+                                                }
+                                            }
+                                        }
+
+                                        @Override
+                                        public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+                                            XposedBridge.log(String.format("#### %s, onFailure responseBody=%s", url, new String(responseBody)));
+                                        }
+                                    });
                                 }
                             }
 
@@ -134,6 +197,18 @@ public class Demo03 implements IXposedHookLoadPackage {
                 }
             }});
         }
+    }
+
+    /**
+     * 检测向你付款消息
+     */
+    private boolean isPayedToMsg(Map<String, String> msg) {
+        if (null != msg && "8003".equals(msg.get("templateCode")) && null != msg.get("tradeNO")) {
+            XposedBridge.log(String.format("#### isPayedToMsg fromUId=%s, fromLoginId=%s, toUId=%s, toLoginId=%s, templateCode=%s, templateData=%s, bizMemo=%s",
+                    msg.get("fromUId"), msg.get("fromLoginId"), msg.get("toUId"), msg.get("toLoginId"), msg.get("templateCode"), msg.get("templateData"), msg.get("bizMemo")));
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -227,7 +302,7 @@ public class Demo03 implements IXposedHookLoadPackage {
     /**
      * 发起主动收款
      */
-    private boolean collectMoney(ClassLoader classLoader, String userId, String payAmount, String desc) {
+    private Object collectMoney(ClassLoader classLoader, String userId, String payAmount, String desc) {
         XposedBridge.log(String.format("#### collectMoney, userId=%s, payAmount=%s, desc=%s", userId, payAmount, desc));
         Object o = XposedHelpers.newInstance(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.rpc.req.SingleCreateReq", classLoader));
         XposedHelpers.setObjectField(o, "userId", userId);
@@ -242,7 +317,7 @@ public class Demo03 implements IXposedHookLoadPackage {
         Object r = XposedHelpers.callMethod(this.collectRpcFac, "createBill", new Object[]{o});
         // r={"success":true,"transferNo":"20190330200040011100220022837971"}
         XposedBridge.log(String.format("#### collectMoney, r=%s", JSON.toJSONString(r)));
-        return XposedHelpers.getBooleanField(r, "success");
+        return r;
     }
 
     /**
@@ -353,7 +428,9 @@ public class Demo03 implements IXposedHookLoadPackage {
                 @Override
                 protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
                     collectRpcFac = XposedHelpers.getObjectField(param.thisObject, "g");
-                    XposedBridge.log(String.format("#### hookRpc collectRpcFac set to=%s", collectRpcFac.getClass()));
+                    if (null != collectRpcFac) {
+                        XposedBridge.log(String.format("#### hookRpc collectRpcFac set to=%s", collectRpcFac.getClass()));
+                    }
                 }
             }});
         } catch (Exception e) {
@@ -377,6 +454,7 @@ public class Demo03 implements IXposedHookLoadPackage {
             put("clientMsgId", null);
             put("templateCode", null);
             put("templateData", null);
+            put("tradeNO", null);
             put("hintMemo", null);
             put("bizMemo", null);
             put("bizType", null);
@@ -409,6 +487,7 @@ public class Demo03 implements IXposedHookLoadPackage {
             if (null == v || "null".equals(v)) v = 0;
             map.put(kv.getKey(), as[(Integer) v + 1]);
         }
+        XposedBridge.log(String.format("#### parseMessage map=%s", JSON.toJSONString(map)));
         return map;
     }
 }
