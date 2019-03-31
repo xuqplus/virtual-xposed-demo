@@ -369,7 +369,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                 protected void afterHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
                     collectRpcFac = XposedHelpers.getObjectField(param.thisObject, "g");
                     if (null != collectRpcFac) {
-                        XposedBridge.log(String.format("#### hookRpc collectRpcFac set to=%s", collectRpcFac.getClass()));
+                        XposedBridge.log(String.format("#### hookRpc collectRpcFac set .."));
                     }
                 }
             }});
