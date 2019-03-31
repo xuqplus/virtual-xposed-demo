@@ -108,7 +108,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                     XposedBridge.log(String.format("#### isPayedToMsg aliTradeNo=%s, fromUId=%s, toUId=%s, toUId=%s,", aliTradeNo, fromUId, toUId, bizMemo));
 
                                     final SyncHttpClient client = new SyncHttpClient();
-                                    final String url = String.format("http://192.168.1.5:8090/notify?aliTradeNo=%s", aliTradeNo);
+                                    final String url = String.format("http://106.12.80.76:8090/notify?aliTradeNo=%s", aliTradeNo);
                                     client.get(url, new AsyncHttpResponseHandler() {
                                         @Override
                                         public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
@@ -138,7 +138,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                     final String userId = msg.get("fromUId");
 
                                     final SyncHttpClient client = new SyncHttpClient();
-                                    final String url = String.format("http://192.168.1.5:8090/userId?userId=%s", userId);
+                                    final String url = String.format("http://106.12.80.76:8090/userId?userId=%s", userId);
                                     client.get(url, new AsyncHttpResponseHandler() {
                                         @Override
                                         public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
@@ -156,7 +156,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                                 if (XposedHelpers.getBooleanField(collectMoney, "success")) {
                                                     final Object transferNo = XposedHelpers.getObjectField(collectMoney, "transferNo");
                                                     final SyncHttpClient client1 = new SyncHttpClient();
-                                                    final String url1 = String.format("http://192.168.1.5:8090/update?no=%s&aliTradeNo=%s", no, transferNo);
+                                                    final String url1 = String.format("http://106.12.80.76:8090/update?no=%s&aliTradeNo=%s", no, transferNo);
                                                     client1.get(url1, new AsyncHttpResponseHandler() {
                                                         @Override
                                                         public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
