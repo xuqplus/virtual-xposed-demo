@@ -8,7 +8,6 @@ import com.alibaba.fastjson.JSON;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 import com.loopj.android.http.SyncHttpClient;
 
-import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -90,6 +89,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                                 String response = new String(responseBody);
                                                 XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url, response));
                                             }
+
                                             @Override
                                             public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
                                                 String response = new String(responseBody);
@@ -104,6 +104,15 @@ public class Demo03 implements IXposedHookLoadPackage {
                                         /* 删除好友指令 */
                                         if ("#delete#".equals(m)) {
                                             deleteContact(classLoader, msg.get("fromUId"));
+                                        }
+                                        /* 收款指令 */
+                                        if (m.toString().startsWith("#collect#")) {
+                                            Map map = (Map) JSON.parse(m.toString().substring("#collect#".length()));
+                                            String loginId = (String) map.get("loginId");
+                                            String userId = (String) map.get("userId");
+                                            String amount = (String) map.get("amount");
+                                            String desc = (String) map.get("desc");
+                                            collectMoney(classLoader, loginId, userId, amount, desc);
                                         }
                                     }
 
@@ -126,7 +135,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                                     final String desc = (String) data.get("desc");
                                                     /* 发起收款 */
                                                     // r={"success":true,"transferNo":"20190330200040011100220022837971"}
-                                                    Object collectMoney = collectMoney(classLoader, userId, amount, desc);
+                                                    Object collectMoney = collectMoney(classLoader, null, userId, amount, desc);
                                                     if (XposedHelpers.getBooleanField(collectMoney, "success")) {
                                                         final Object transferNo = XposedHelpers.getObjectField(collectMoney, "transferNo");
                                                         final SyncHttpClient client1 = new SyncHttpClient();
@@ -136,6 +145,7 @@ public class Demo03 implements IXposedHookLoadPackage {
                                                             public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
                                                                 XposedBridge.log(String.format("#### %s, onSuccess responseBody=%s", url1, new String(responseBody)));
                                                             }
+
                                                             @Override
                                                             public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
                                                                 XposedBridge.log(String.format("#### %s, onFailure responseBody=%s", url1, new String(responseBody)));
@@ -242,11 +252,11 @@ public class Demo03 implements IXposedHookLoadPackage {
     /**
      * 发起主动收款
      */
-    private Object collectMoney(ClassLoader classLoader, String userId, String payAmount, String desc) {
+    private Object collectMoney(ClassLoader classLoader, String logonId, String userId, String payAmount, String desc) {
         XposedBridge.log(String.format("#### collectMoney, userId=%s, payAmount=%s, desc=%s", userId, payAmount, desc));
         Object o = XposedHelpers.newInstance(XposedHelpers.findClass("com.alipay.android.phone.personalapp.socialpayee.rpc.req.SingleCreateReq", classLoader));
         XposedHelpers.setObjectField(o, "userId", userId);
-        XposedHelpers.setObjectField(o, "logonId", "");
+        XposedHelpers.setObjectField(o, "logonId", null == logonId ? "" : logonId);
         XposedHelpers.setObjectField(o, "payAmount", payAmount);
         XposedHelpers.setObjectField(o, "userName", "");
         XposedHelpers.setObjectField(o, "billName", "个人收款");
